@@ -516,6 +516,7 @@ function beginResizeDrag(e, id, handle) {
   const start = getLogicalPoint(e);
   const wantsE = handle.includes('e'), wantsW = handle.includes('w');
   const wantsS = handle.includes('s'), wantsN = handle.includes('n');
+  const isCorner = (wantsE || wantsW) && (wantsN || wantsS);
 
   function onMove(ev) {
     const p = getLogicalPoint(ev);
@@ -523,14 +524,24 @@ function beginResizeDrag(e, id, handle) {
     const dxLocal = dxG * cos + dyG * sin;
     const dyLocal = -dxG * sin + dyG * cos;
 
-    let newW = init.w, newH = init.h, cdx = 0, cdy = 0;
-    if (wantsE) { newW = init.w + dxLocal; cdx = dxLocal / 2; }
-    else if (wantsW) { newW = init.w - dxLocal; cdx = dxLocal / 2; }
-    if (wantsS) { newH = init.h + dyLocal; cdy = dyLocal / 2; }
-    else if (wantsN) { newH = init.h - dyLocal; cdy = dyLocal / 2; }
+    let newW = init.w, newH = init.h;
+    if (wantsE) newW = init.w + dxLocal;
+    else if (wantsW) newW = init.w - dxLocal;
+    if (wantsS) newH = init.h + dyLocal;
+    else if (wantsN) newH = init.h - dyLocal;
+
+    if (isCorner && ev.shiftKey) {
+      const scaleW = newW / init.w, scaleH = newH / init.h;
+      const scale = Math.abs(scaleW - 1) >= Math.abs(scaleH - 1) ? scaleW : scaleH;
+      newW = init.w * scale;
+      newH = init.h * scale;
+    }
 
     newW = Math.max(MIN_SIZE, newW);
     newH = Math.max(MIN_SIZE, newH);
+
+    const cdx = wantsE ? (newW - init.w) / 2 : wantsW ? (init.w - newW) / 2 : 0;
+    const cdy = wantsS ? (newH - init.h) / 2 : wantsN ? (init.h - newH) / 2 : 0;
 
     const offGX = cdx * cos - cdy * sin;
     const offGY = cdx * sin + cdy * cos;
