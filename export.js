@@ -49,6 +49,7 @@ function sanitizeDeckForSave(deck) {
     slide.elements.forEach((el) => {
       delete el._img;
       delete el._maskImg;
+      delete el._fillImg;
     });
     if (slide.background) delete slide.background.image;
   });

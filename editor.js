@@ -1748,7 +1748,7 @@ function toggleAltTextPopover() {
 
 // ---- 図形の結合 (統合・型抜き/合成・切り出し・重色合成・型抜き) ----
 
-const MERGE_ABLE_TYPES = ['rect', 'ellipse', 'poly'];
+const MERGE_ABLE_TYPES = ['rect', 'ellipse', 'poly', 'image'];
 
 function getElRotatedBBox(el) {
   const cx = el.x + el.w / 2, cy = el.y + el.h / 2;
@@ -1784,7 +1784,7 @@ function fillShapeSilhouette(ctx, el, originX, originY, scale, compositeOp, colo
   ctx.scale(el.flipH ? -1 : 1, el.flipV ? -1 : 1);
   const w = el.w * scale, h = el.h * scale;
   ctx.beginPath();
-  if (el.type === 'rect') {
+  if (el.type === 'rect' || el.type === 'image') {
     const r = Math.min((el.cornerRadius || 0) * scale, w / 2, h / 2);
     if (r > 0 && ctx.roundRect) ctx.roundRect(-w / 2, -h / 2, w, h, r);
     else ctx.rect(-w / 2, -h / 2, w, h);
@@ -1863,11 +1863,32 @@ function computeFragmentPieces(elements, bbox, scale) {
   return pieces;
 }
 
+// 画像を「結合」の塗り(fillImage)として使うため、元の位置・サイズ・回転を
+// 結合後の bbox 基準のローカル座標に変換して保持する(=画像は引き伸ばさず、
+// 図形の形で切り抜かれたように見せる)
+function buildFillImageFromEl(imgEl, bbox) {
+  return {
+    src: imgEl.src,
+    x: imgEl.x - bbox.x, y: imgEl.y - bbox.y,
+    w: imgEl.w, h: imgEl.h,
+    rotation: imgEl.rotation || 0,
+    flipH: !!imgEl.flipH, flipV: !!imgEl.flipV,
+  };
+}
+
+function mergeStyleOverrides(sourceEl, bbox, zIndex) {
+  if (sourceEl.type === 'image') {
+    return { fill: '#6c4ff2', fillImage: buildFillImageFromEl(sourceEl, bbox), zIndex };
+  }
+  const fillColor = (sourceEl.fill && sourceEl.fill !== 'transparent') ? sourceEl.fill : '#6c4ff2';
+  return { fill: fillColor, zIndex };
+}
+
 function performShapeMerge(mode) {
   closeDropdowns();
   const slide = getActiveSlide();
   const elements = selection.map(id => findElement(slide, id)).filter(el => el && MERGE_ABLE_TYPES.includes(el.type));
-  if (elements.length < 2) { showToast('図形の結合には図形(四角形・楕円など)を2つ以上選択してください'); return; }
+  if (elements.length < 2) { showToast('図形の結合には図形または画像を2つ以上選択してください'); return; }
 
   const bbox = computeMergedBBox(elements);
   const scale = Math.min(4, Math.max(1, 700 / Math.max(bbox.w, bbox.h)));
@@ -1881,8 +1902,8 @@ function performShapeMerge(mode) {
     const baseZ = nextZIndex(slide);
     const newIds = [];
     pieces.forEach((p, i) => {
-      const fillColor = (p.sourceEl.fill && p.sourceEl.fill !== 'transparent') ? p.sourceEl.fill : '#6c4ff2';
-      const el = createMergedEl(bbox, p.canvas.toDataURL('image/png'), { fill: fillColor, zIndex: baseZ + i });
+      const overrides = mergeStyleOverrides(p.sourceEl, bbox, baseZ + i);
+      const el = createMergedEl(bbox, p.canvas.toDataURL('image/png'), overrides);
       slide.elements.push(el);
       newIds.push(el.id);
     });
@@ -1891,9 +1912,9 @@ function performShapeMerge(mode) {
     const canvas = rasterizeSilhouette(elements, bbox, scale, mode);
     if (!canvasHasContent(canvas)) { showToast('結合結果が空になりました(図形が重なっていません)'); return; }
     const styleSource = elements[0];
-    const fillColor = (styleSource.fill && styleSource.fill !== 'transparent') ? styleSource.fill : '#6c4ff2';
+    const overrides = mergeStyleOverrides(styleSource, bbox, nextZIndex(slide));
     slide.elements = slide.elements.filter(e => !idsToRemove.has(e.id));
-    const newEl = createMergedEl(bbox, canvas.toDataURL('image/png'), { fill: fillColor, zIndex: nextZIndex(slide) });
+    const newEl = createMergedEl(bbox, canvas.toDataURL('image/png'), overrides);
     slide.elements.push(newEl);
     selection = [newEl.id];
   }

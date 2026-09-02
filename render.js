@@ -113,7 +113,6 @@ function buildElementNode(el, editable) {
     img.style.cssText = 'width:100%;height:100%;object-fit:fill;pointer-events:none;';
     node.appendChild(img);
   } else if (el.type === 'merge') {
-    node.style.background = el.fill;
     const maskUrl = `url("${el.maskDataUrl}")`;
     node.style.webkitMaskImage = maskUrl;
     node.style.maskImage = maskUrl;
@@ -121,6 +120,18 @@ function buildElementNode(el, editable) {
     node.style.maskSize = '100% 100%';
     node.style.webkitMaskRepeat = 'no-repeat';
     node.style.maskRepeat = 'no-repeat';
+    if (el.fillImage) {
+      const fi = el.fillImage;
+      const img = document.createElement('img');
+      img.src = fi.src;
+      img.draggable = false;
+      const flipX = fi.flipH ? -1 : 1, flipY = fi.flipV ? -1 : 1;
+      img.style.cssText = `position:absolute;left:${fi.x}px;top:${fi.y}px;width:${fi.w}px;height:${fi.h}px;`
+        + `transform:rotate(${fi.rotation || 0}deg) scale(${flipX},${flipY});object-fit:fill;pointer-events:none;`;
+      node.appendChild(img);
+    } else {
+      node.style.background = el.fill;
+    }
   }
   if (el.shadow) node.style.filter = 'drop-shadow(2px 4px 6px rgba(0,0,0,0.4))';
   return node;
@@ -228,8 +239,19 @@ function drawElementToCanvas(ctx, el, scale) {
     if (el.strokeWidth > 0) { ctx.strokeStyle = el.stroke; ctx.lineWidth = el.strokeWidth * scale; ctx.stroke(); }
   } else if (el.type === 'merge') {
     if (el._maskImg) {
-      ctx.fillStyle = el.fill;
-      ctx.fillRect(0, 0, w, h);
+      if (el.fillImage && el._fillImg) {
+        const fi = el.fillImage;
+        ctx.save();
+        const fcx = (fi.x + fi.w / 2) * scale, fcy = (fi.y + fi.h / 2) * scale;
+        ctx.translate(fcx, fcy);
+        ctx.rotate((fi.rotation || 0) * Math.PI / 180);
+        ctx.scale(fi.flipH ? -1 : 1, fi.flipV ? -1 : 1);
+        ctx.drawImage(el._fillImg, -fi.w * scale / 2, -fi.h * scale / 2, fi.w * scale, fi.h * scale);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = el.fill;
+        ctx.fillRect(0, 0, w, h);
+      }
       ctx.globalCompositeOperation = 'destination-in';
       ctx.drawImage(el._maskImg, 0, 0, w, h);
       ctx.globalCompositeOperation = 'source-over';
@@ -377,6 +399,14 @@ function preloadImages(slide) {
         img.onload = () => { el._maskImg = img; resolve(); };
         img.onerror = () => resolve();
         img.src = el.maskDataUrl;
+      }));
+    }
+    if (el.type === 'merge' && el.fillImage && el.fillImage.src) {
+      promises.push(new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => { el._fillImg = img; resolve(); };
+        img.onerror = () => resolve();
+        img.src = el.fillImage.src;
       }));
     }
   }
