@@ -33,7 +33,8 @@ function createDefaultTextEl(overrides) {
 
 const POLY_SHAPES = new Set([
   'triangle', 'right-triangle', 'diamond', 'parallelogram', 'trapezoid',
-  'pentagon', 'hexagon', 'star', 'star6', 'heart', 'cross', 'chevron',
+  'pentagon', 'hexagon', 'octagon', 'star', 'star6', 'star8', 'heart',
+  'cross', 'chevron', 'half-circle', 'speech-bubble', 'arrow-block',
 ]);
 const LINE_SHAPES = new Set(['line', 'arrow', 'double-arrow']);
 
@@ -52,9 +53,14 @@ function polyPoints(shapeKind) {
     ]);
     case 'pentagon': return regularPolygon(5, -90);
     case 'hexagon': return regularPolygon(6, 0);
+    case 'octagon': return regularPolygon(8, 22.5);
     case 'star': return starPoints(5, 0.42);
     case 'star6': return starPoints(6, 0.5);
+    case 'star8': return starPoints(8, 0.5);
     case 'heart': return heartPoints();
+    case 'half-circle': return halfCirclePoints();
+    case 'speech-bubble': return pts([[0, 0], [1, 0], [1, 0.7], [0.3, 0.7], [0.15, 1], [0.15, 0.7], [0, 0.7]]);
+    case 'arrow-block': return pts([[0, 0.3], [0.6, 0.3], [0.6, 0.1], [1, 0.5], [0.6, 0.9], [0.6, 0.7], [0, 0.7]]);
     default: return pts([[0, 0], [1, 0], [1, 1], [0, 1]]);
   }
 }
@@ -76,6 +82,18 @@ function starPoints(n, innerRatio) {
     pts.push([0.5 + r * Math.cos(a), 0.5 + r * Math.sin(a)]);
   }
   return pts;
+}
+
+function halfCirclePoints() {
+  const pts = [];
+  const steps = 24;
+  for (let i = 0; i <= steps; i++) {
+    const a = Math.PI * (i / steps);
+    pts.push([0.5 + 0.5 * Math.cos(a), 0.5 - 0.5 * Math.sin(a)]);
+  }
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  return pts.map(([x, y]) => [(x - minX) / (maxX - minX), (y - minY) / (maxY - minY)]);
 }
 
 function heartPoints() {

@@ -1464,11 +1464,16 @@ const SHAPE_DEFS = [
   { kind: 'trapezoid', label: '台形', svg: '<polygon points="8,5 16,5 21,19 3,19"/>' },
   { kind: 'pentagon', label: '五角形', svg: '<polygon points="12,3 21,9.5 17.5,20 6.5,20 3,9.5"/>' },
   { kind: 'hexagon', label: '六角形', svg: '<polygon points="7,3 17,3 22,12 17,21 7,21 2,12"/>' },
+  { kind: 'octagon', label: '八角形', svg: '<polygon points="15.4,3.7 20.3,8.6 20.3,15.4 15.4,20.3 8.6,20.3 3.7,15.4 3.7,8.6 8.6,3.7"/>' },
   { kind: 'star', label: '星', svg: '<polygon points="12,2 14.8,9 22,9.3 16.3,14 18.2,21 12,17 5.8,21 7.7,14 2,9.3 9.2,9"/>' },
   { kind: 'star6', label: '六芒星', svg: '<polygon points="12,2 14.3,7.8 20.5,7 16.6,12 20.5,17 14.3,16.2 12,22 9.7,16.2 3.5,17 7.4,12 3.5,7 9.7,7.8"/>' },
+  { kind: 'star8', label: '八芒星', svg: '<polygon points="12,3 13.7,7.8 18.4,5.6 16.2,10.3 21,12 16.2,13.7 18.4,18.4 13.7,16.2 12,21 10.3,16.2 5.6,18.4 7.8,13.7 3,12 7.8,10.3 5.6,5.6 10.3,7.8"/>' },
   { kind: 'heart', label: 'ハート', svg: '<path d="M12 21s-7-4.4-9.5-8.8C.5 8.8 2 5 5.5 5c2 0 3.5 1.3 4.5 3 1-1.7 2.5-3 4.5-3 3.5 0 5 3.8 3 7.2C19 16.6 12 21 12 21z"/>' },
+  { kind: 'half-circle', label: '半円', svg: '<path d="M3 12a9 9 0 0 1 18 0z"/>' },
   { kind: 'cross', label: '十字', svg: '<polygon points="9,3 15,3 15,9 21,9 21,15 15,15 15,21 9,21 9,15 3,15 3,9 9,9"/>' },
   { kind: 'chevron', label: '矢羽根', svg: '<polygon points="3,4 13,4 21,12 13,20 3,20 9,12"/>' },
+  { kind: 'arrow-block', label: '矢印(ブロック)', svg: '<polygon points="3,8.4 13.8,8.4 13.8,4.8 21,12 13.8,19.2 13.8,15.6 3,15.6"/>' },
+  { kind: 'speech-bubble', label: '吹き出し', svg: '<polygon points="3,3 21,3 21,15.6 8.4,15.6 5.7,21 5.7,15.6 3,15.6"/>' },
 ];
 const LINE_DEFS = [
   { kind: 'line', label: '直線', svg: '<line x1="4" y1="20" x2="20" y2="4"/>' },
