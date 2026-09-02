@@ -1,6 +1,35 @@
 // 書き出し層: Canvas2D 描画結果を PNG / 自前生成 PDF としてダウンロードする。
 
-function downloadBlob(blob, filename) {
+let __downloadsCapability = null;
+let __downloadsCapabilityChecked = false;
+
+// Claude Artifact として実行されている場合、ブラウザ標準の <a download> は
+// サンドボックスにブロックされ何も起きない。window.claude.use('downloads') が
+// 使える環境ではそちらを優先し、通常のブラウザ(GitHub Pages 等)では従来通り。
+async function getDownloadsCapability() {
+  if (__downloadsCapabilityChecked) return __downloadsCapability;
+  __downloadsCapabilityChecked = true;
+  if (typeof window.claude === 'undefined' || typeof window.claude.use !== 'function') {
+    return null;
+  }
+  try {
+    __downloadsCapability = await window.claude.use('downloads');
+  } catch (e) {
+    __downloadsCapability = null;
+  }
+  return __downloadsCapability;
+}
+
+async function downloadBlob(blob, filename) {
+  const downloads = await getDownloadsCapability();
+  if (downloads) {
+    try {
+      await downloads.save({ filename, data: blob });
+    } catch (e) {
+      if (e && e.code !== 'declined') showToast('ファイルの保存に失敗しました');
+    }
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

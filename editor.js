@@ -2400,6 +2400,21 @@ function initEvents() {
     else if (e.key.startsWith('Arrow') && selection.length) { e.preventDefault(); nudgeSelected(e.key, e.shiftKey); }
   });
 
+  document.addEventListener('paste', (e) => {
+    if (isTypingContext()) return;
+    if (!document.getElementById('home-screen').classList.contains('hidden')) return;
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) handleImageFile(file);
+        return;
+      }
+    }
+  });
+
   window.addEventListener('resize', () => zoomFit());
   window.addEventListener('pagehide', () => saveDeck(deck));
 }
