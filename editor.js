@@ -17,31 +17,55 @@ let sorterMode = false;
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 const MIN_SIZE = 20;
 
-// 色の getter/setter に紐づく「透明度」スライダー行を1つ作る
-function buildOpacityRow(getColor, setColor, onLive, labelText) {
+// スライダー + 数値入力(直接タイプ可能)を1組にした行を作る汎用ヘルパー
+function buildSliderNumRow(labelText, min, max, getValue, setValue, onLive, suffix) {
   const row = el('div', 'prop-row opacity-row');
   const slider = document.createElement('input');
-  slider.type = 'range'; slider.min = '0'; slider.max = '100'; slider.className = 'opacity-slider';
-  const label = el('span', 'prop-hint opacity-value', '');
+  slider.type = 'range'; slider.min = String(min); slider.max = String(max); slider.className = 'opacity-slider';
+  const numInput = document.createElement('input');
+  numInput.type = 'number'; numInput.min = String(min); numInput.max = String(max); numInput.className = 'num-input opacity-num';
+
   const sync = () => {
-    const { a } = parseColorRGBA(getColor());
-    const transparency = Math.round((1 - (a != null ? a : 1)) * 100);
-    slider.value = String(100 - transparency);
-    label.textContent = `${transparency}%`;
+    const v = Math.round(getValue());
+    slider.value = String(v);
+    numInput.value = String(v);
   };
   sync();
-  slider.addEventListener('input', () => {
-    const { r, g, b } = parseColorRGBA(getColor());
-    setColor(toColorString(r, g, b, Number(slider.value) / 100));
-    label.textContent = `${100 - Number(slider.value)}%`;
+
+  const apply = (raw) => {
+    let v = Number(raw);
+    if (Number.isNaN(v)) v = min;
+    v = Math.max(min, Math.min(max, v));
+    setValue(v);
+    slider.value = String(v);
+    numInput.value = String(v);
     if (onLive) onLive();
-  });
+  };
+
+  slider.addEventListener('input', () => apply(slider.value));
   slider.addEventListener('change', () => commit());
-  row.appendChild(el('span', 'prop-hint', labelText || '透明度'));
+  numInput.addEventListener('input', () => apply(numInput.value));
+  numInput.addEventListener('change', () => commit());
+
+  row.appendChild(el('span', 'prop-hint', labelText));
   row.appendChild(slider);
-  row.appendChild(label);
+  row.appendChild(numInput);
+  if (suffix) row.appendChild(el('span', 'prop-hint', suffix));
   row._sync = sync;
   return row;
+}
+
+// 色の getter/setter に紐づく「透明度」スライダー行を1つ作る
+function buildOpacityRow(getColor, setColor, onLive, labelText) {
+  return buildSliderNumRow(
+    labelText || '透明度', 0, 100,
+    () => { const { a } = parseColorRGBA(getColor()); return Math.round((1 - (a != null ? a : 1)) * 100); },
+    (transparency) => {
+      const { r, g, b } = parseColorRGBA(getColor());
+      setColor(toColorString(r, g, b, (100 - transparency) / 100));
+    },
+    onLive, '%',
+  );
 }
 
 // 新しい色を「一番広い隙間」の中央に、両隣の色を混ぜた色で挿入する。
@@ -96,21 +120,12 @@ function buildGradientControls(s, onLive) {
       }
       stopsWrap.appendChild(row);
 
-      const posRow = el('div', 'prop-row opacity-row');
-      const posSlider = document.createElement('input');
-      posSlider.type = 'range'; posSlider.min = '0'; posSlider.max = '100'; posSlider.className = 'opacity-slider';
-      posSlider.value = String(Math.round(stop.pos * 100));
-      const posLabel = el('span', 'prop-hint opacity-value', `${Math.round(stop.pos * 100)}%`);
-      posSlider.addEventListener('input', () => {
-        stop.pos = Number(posSlider.value) / 100;
-        posLabel.textContent = `${posSlider.value}%`;
-        live();
-      });
-      posSlider.addEventListener('change', () => commit());
-      posRow.appendChild(el('span', 'prop-hint', '位置'));
-      posRow.appendChild(posSlider);
-      posRow.appendChild(posLabel);
-      stopsWrap.appendChild(posRow);
+      stopsWrap.appendChild(buildSliderNumRow(
+        '位置', 0, 100,
+        () => Math.round(stop.pos * 100),
+        (v) => { stop.pos = v / 100; },
+        live, '%',
+      ));
 
       stopsWrap.appendChild(buildOpacityRow(() => stop.color, (c2) => { stop.color = c2; live(); }, null, `色${i + 1}の透明度`));
     });
@@ -124,21 +139,12 @@ function buildGradientControls(s, onLive) {
   };
   wrap.appendChild(addBtn);
 
-  const angleRow = el('div', 'prop-row opacity-row');
-  const angleSlider = document.createElement('input');
-  angleSlider.type = 'range'; angleSlider.min = '0'; angleSlider.max = '359'; angleSlider.className = 'opacity-slider';
-  angleSlider.value = String(s.fillGradient.angle);
-  const angleLabel = el('span', 'prop-hint opacity-value', `${s.fillGradient.angle}°`);
-  angleSlider.addEventListener('input', () => {
-    s.fillGradient.angle = Number(angleSlider.value);
-    angleLabel.textContent = `${angleSlider.value}°`;
-    live();
-  });
-  angleSlider.addEventListener('change', () => commit());
-  angleRow.appendChild(el('span', 'prop-hint', '角度'));
-  angleRow.appendChild(angleSlider);
-  angleRow.appendChild(angleLabel);
-  wrap.appendChild(angleRow);
+  wrap.appendChild(buildSliderNumRow(
+    '角度', 0, 359,
+    () => s.fillGradient.angle,
+    (v) => { s.fillGradient.angle = v; },
+    live, '°',
+  ));
 
   return wrap;
 }
