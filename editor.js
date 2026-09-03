@@ -2688,6 +2688,15 @@ function initEvents() {
     });
   });
 
+  document.getElementById('canvas-scroll').addEventListener('mousedown', (e) => {
+    if (e.target.closest('#slide-canvas')) return;
+    if (editingTextId) commitTextEdit();
+    if (!selection.length) return;
+    selection = [];
+    renderSelectionOverlay();
+    renderPropPanel();
+  });
+
   document.getElementById('btn-menu').addEventListener('click', () => openHomeScreen());
   document.getElementById('btn-new-ribbon').addEventListener('click', () => openHomeScreen());
   document.getElementById('btn-home-close').addEventListener('click', () => closeHomeScreen());
