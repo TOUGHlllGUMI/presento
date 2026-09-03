@@ -468,6 +468,10 @@ select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; 
 .fmt-color-palette button { width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--border); padding: 0; }
 .fmt-color-palette button:hover { transform: scale(1.1); }
 
+.opacity-row { padding: 4px; flex-wrap: nowrap; }
+.opacity-row .opacity-slider { flex: 1; min-width: 60px; accent-color: var(--accent); }
+.opacity-row .opacity-value { width: 34px; text-align: right; flex: none; }
+
 #grid-overlay {
   position: absolute; inset: 0; pointer-events: none;
   background-image:

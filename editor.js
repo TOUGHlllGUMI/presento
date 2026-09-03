@@ -17,6 +17,69 @@ let sorterMode = false;
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 const MIN_SIZE = 20;
 
+// ---- 色(不透明度つき)のユーティリティ ----
+// 色は '#rrggbb'(不透明) または 'rgba(r,g,b,a)'(半透明) の CSS 文字列として保持する。
+// DOM の style / SVG 属性 / Canvas2D の fillStyle はいずれもこの2形式をそのまま解釈できるため、
+// 描画側のコードは変更不要。
+
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+  if (!m) return { r: 0, g: 0, b: 0 };
+  return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
+}
+
+function parseColorRGBA(color) {
+  if (!color || color === 'transparent') return { r: 255, g: 255, b: 255, a: 0 };
+  const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+))?\s*\)$/i.exec(color);
+  if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+  const { r, g, b } = hexToRgb(color);
+  return { r, g, b, a: 1 };
+}
+
+function toColorString(r, g, b, a) {
+  const hex = '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+  const clampedA = Math.round(Math.max(0, Math.min(1, a)) * 100) / 100;
+  return clampedA >= 1 ? hex : `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${clampedA})`;
+}
+
+function colorToHex(color) {
+  const { r, g, b } = parseColorRGBA(color);
+  return '#' + [r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+}
+
+function withNewRgbKeepAlpha(existingColor, hex) {
+  const { a } = parseColorRGBA(existingColor);
+  const { r, g, b } = hexToRgb(hex);
+  return toColorString(r, g, b, a);
+}
+
+// 色の getter/setter に紐づく「透明度」スライダー行を1つ作る
+function buildOpacityRow(getColor, setColor, onLive, labelText) {
+  const row = el('div', 'prop-row opacity-row');
+  const slider = document.createElement('input');
+  slider.type = 'range'; slider.min = '0'; slider.max = '100'; slider.className = 'opacity-slider';
+  const label = el('span', 'prop-hint opacity-value', '');
+  const sync = () => {
+    const { a } = parseColorRGBA(getColor());
+    const transparency = Math.round((1 - (a != null ? a : 1)) * 100);
+    slider.value = String(100 - transparency);
+    label.textContent = `${transparency}%`;
+  };
+  sync();
+  slider.addEventListener('input', () => {
+    const { r, g, b } = parseColorRGBA(getColor());
+    setColor(toColorString(r, g, b, Number(slider.value) / 100));
+    label.textContent = `${100 - Number(slider.value)}%`;
+    if (onLive) onLive();
+  });
+  slider.addEventListener('change', () => commit());
+  row.appendChild(el('span', 'prop-hint', labelText || '透明度'));
+  row.appendChild(slider);
+  row.appendChild(label);
+  row._sync = sync;
+  return row;
+}
+
 function getActiveSlide() {
   return findSlide(deck, activeSlideId) || deck.slides[0];
 }
@@ -767,8 +830,8 @@ function buildTextSection(t) {
 
   const row2 = el('div', 'prop-row');
   const colorInput = document.createElement('input');
-  colorInput.type = 'color'; colorInput.value = t.color;
-  colorInput.oninput = () => { t.color = colorInput.value; updateTextLive(t); };
+  colorInput.type = 'color'; colorInput.value = colorToHex(t.color);
+  colorInput.oninput = () => { t.color = withNewRgbKeepAlpha(t.color, colorInput.value); updateTextLive(t); };
   colorInput.onchange = onFieldCommit;
   row2.appendChild(colorInput);
 
@@ -788,6 +851,8 @@ function buildTextSection(t) {
   });
   sec.appendChild(row3);
 
+  sec.appendChild(buildOpacityRow(() => t.color, (c) => { t.color = c; updateTextLive(t); }, null, '文字色の透明度'));
+
   return sec;
 }
 
@@ -804,12 +869,13 @@ function buildMergeSection(s) {
   sec.appendChild(el('div', 'prop-label', '塗りつぶし'));
   const row = el('div', 'prop-row');
   const fill = document.createElement('input');
-  fill.type = 'color'; fill.value = s.fill === 'transparent' ? '#ffffff' : s.fill;
-  fill.oninput = () => { s.fill = fill.value; quickRestyle(s); };
+  fill.type = 'color'; fill.value = colorToHex(s.fill);
+  fill.oninput = () => { s.fill = withNewRgbKeepAlpha(s.fill, fill.value); quickRestyle(s); };
   fill.onchange = onFieldCommit;
   row.appendChild(fill);
   row.appendChild(el('span', 'prop-hint', '図形の結合で作成された図形です'));
   sec.appendChild(row);
+  sec.appendChild(buildOpacityRow(() => s.fill, (c) => { s.fill = c; quickRestyle(s); }));
   return sec;
 }
 
@@ -818,19 +884,21 @@ function buildShapeSection(s) {
   sec.appendChild(el('div', 'prop-label', '塗りつぶしと枠線'));
   const row = el('div', 'prop-row');
   const fill = document.createElement('input');
-  fill.type = 'color'; fill.value = s.fill === 'transparent' ? '#ffffff' : s.fill;
-  fill.oninput = () => { s.fill = fill.value; quickRestyle(s); };
+  fill.type = 'color'; fill.value = colorToHex(s.fill);
+  fill.oninput = () => { s.fill = withNewRgbKeepAlpha(s.fill, fill.value); quickRestyle(s); };
   fill.onchange = onFieldCommit;
   row.appendChild(fill);
   row.appendChild(el('span', 'prop-hint', '塗り'));
 
   const stroke = document.createElement('input');
-  stroke.type = 'color'; stroke.value = s.stroke;
-  stroke.oninput = () => { s.stroke = stroke.value; quickRestyle(s); };
+  stroke.type = 'color'; stroke.value = colorToHex(s.stroke);
+  stroke.oninput = () => { s.stroke = withNewRgbKeepAlpha(s.stroke, stroke.value); quickRestyle(s); };
   stroke.onchange = onFieldCommit;
   row.appendChild(stroke);
   row.appendChild(el('span', 'prop-hint', '枠線'));
   sec.appendChild(row);
+  sec.appendChild(buildOpacityRow(() => s.fill, (c) => { s.fill = c; quickRestyle(s); }, null, '塗りの透明度'));
+  sec.appendChild(buildOpacityRow(() => s.stroke, (c) => { s.stroke = c; quickRestyle(s); }, null, '枠線の透明度'));
 
   const row2 = el('div', 'prop-row');
   const sw = document.createElement('input');
@@ -889,8 +957,8 @@ function buildLineSection(s) {
   sec.appendChild(el('div', 'prop-label', '線'));
   const row = el('div', 'prop-row');
   const stroke = document.createElement('input');
-  stroke.type = 'color'; stroke.value = s.stroke;
-  stroke.oninput = () => { s.stroke = stroke.value; renderCanvas(); };
+  stroke.type = 'color'; stroke.value = colorToHex(s.stroke);
+  stroke.oninput = () => { s.stroke = withNewRgbKeepAlpha(s.stroke, stroke.value); renderCanvas(); };
   stroke.onchange = onFieldCommit;
   row.appendChild(stroke);
 
@@ -902,6 +970,7 @@ function buildLineSection(s) {
   row.appendChild(sw);
   row.appendChild(el('span', 'prop-hint', '太さ'));
   sec.appendChild(row);
+  sec.appendChild(buildOpacityRow(() => s.stroke, (c) => { s.stroke = c; renderCanvas(); }));
   return sec;
 }
 
@@ -1582,7 +1651,7 @@ function mkTextMenuButton(label, onClick) {
   return b;
 }
 
-function buildColorPalette(menuEl, onPick, extraButtons) {
+function buildColorPalette(menuEl, onPick, extraButtons, alphaOpts) {
   menuEl.innerHTML = '';
   if (extraButtons) extraButtons.forEach(b => menuEl.appendChild(b));
   const grid = document.createElement('div');
@@ -1595,32 +1664,48 @@ function buildColorPalette(menuEl, onPick, extraButtons) {
     grid.appendChild(b);
   });
   menuEl.appendChild(grid);
+
+  if (alphaOpts) {
+    const opacityRow = buildOpacityRow(
+      () => { const e = alphaOpts.getEl(); return e ? e[alphaOpts.field] : '#000000'; },
+      (c) => { const e = alphaOpts.getEl(); if (!e) return; e[alphaOpts.field] = c; alphaOpts.onLive(e); },
+    );
+    opacityRow.addEventListener('mousedown', (e) => e.stopPropagation());
+    menuEl.appendChild(opacityRow);
+    menuEl._syncOpacity = opacityRow._sync;
+  }
 }
 
 function initFmtStyleMenus() {
+  const fillEl = () => {
+    if (selection.length !== 1) return null;
+    const e = findElement(getActiveSlide(), selection[0]);
+    return e && ('fill' in e) ? e : null;
+  };
   buildColorPalette(document.getElementById('menu-fmt-fill'), (c) => {
-    if (selection.length !== 1) return;
-    const el = findElement(getActiveSlide(), selection[0]);
-    if (!el || !('fill' in el)) return;
+    const el = fillEl();
+    if (!el) return;
     el.fill = c; quickRestyle(el); commit();
   }, [mkTextMenuButton('塗りつぶしなし', () => {
-    if (selection.length !== 1) return;
-    const el = findElement(getActiveSlide(), selection[0]);
-    if (!el || !('fill' in el)) return;
+    const el = fillEl();
+    if (!el) return;
     el.fill = 'transparent'; quickRestyle(el); commit();
-  })]);
+  })], { getEl: fillEl, field: 'fill', onLive: (e) => { quickRestyle(e); } });
 
+  const strokeEl = () => {
+    if (selection.length !== 1) return null;
+    const e = findElement(getActiveSlide(), selection[0]);
+    return e && ('stroke' in e) ? e : null;
+  };
   buildColorPalette(document.getElementById('menu-fmt-stroke'), (c) => {
-    if (selection.length !== 1) return;
-    const el = findElement(getActiveSlide(), selection[0]);
-    if (!el || !('stroke' in el)) return;
+    const el = strokeEl();
+    if (!el) return;
     el.stroke = c; if (!el.strokeWidth) el.strokeWidth = 2; quickRestyle(el); commit();
   }, [mkTextMenuButton('線なし', () => {
-    if (selection.length !== 1) return;
-    const el = findElement(getActiveSlide(), selection[0]);
+    const el = strokeEl();
     if (!el || !('strokeWidth' in el)) return;
     el.strokeWidth = 0; quickRestyle(el); commit();
-  })]);
+  })], { getEl: strokeEl, field: 'stroke', onLive: (e) => { quickRestyle(e); } });
 
   const effectMenu = document.getElementById('menu-fmt-effect');
   effectMenu.appendChild(mkTextMenuButton('影を付ける / 消す', () => {
@@ -1632,24 +1717,26 @@ function initFmtStyleMenus() {
     commit();
   }));
 
+  const textEl = () => {
+    if (selection.length !== 1) return null;
+    const e = findElement(getActiveSlide(), selection[0]);
+    return e && e.type === 'text' ? e : null;
+  };
   buildColorPalette(document.getElementById('menu-fmt-textfill'), (c) => {
-    if (selection.length !== 1) return;
-    const el = findElement(getActiveSlide(), selection[0]);
-    if (!el || el.type !== 'text') return;
+    const el = textEl();
+    if (!el) return;
     el.color = c; updateTextLive(el); commit();
-  });
+  }, null, { getEl: textEl, field: 'color', onLive: (e) => { updateTextLive(e); } });
 
   buildColorPalette(document.getElementById('menu-fmt-textoutline'), (c) => {
-    if (selection.length !== 1) return;
-    const el = findElement(getActiveSlide(), selection[0]);
-    if (!el || el.type !== 'text') return;
+    const el = textEl();
+    if (!el) return;
     el.textStroke = c; renderCanvas(); commit();
   }, [mkTextMenuButton('輪郭なし', () => {
-    if (selection.length !== 1) return;
-    const el = findElement(getActiveSlide(), selection[0]);
-    if (!el || el.type !== 'text') return;
+    const el = textEl();
+    if (!el) return;
     el.textStroke = null; renderCanvas(); commit();
-  })]);
+  })], { getEl: () => { const e = textEl(); return e && e.textStroke ? e : null; }, field: 'textStroke', onLive: () => renderCanvas() });
 
   const texteffectMenu = document.getElementById('menu-fmt-texteffect');
   texteffectMenu.appendChild(mkTextMenuButton('影を付ける / 消す', () => {
@@ -2497,6 +2584,7 @@ function toggleDropdown(id) {
   dropdown.classList.add('open');
   const btn = dropdown.querySelector('button');
   const menu = dropdown.querySelector('.dropdown-menu');
+  if (menu._syncOpacity) menu._syncOpacity();
   const btnRect = btn.getBoundingClientRect();
   const menuRect = menu.getBoundingClientRect();
   let left = btnRect.left;
