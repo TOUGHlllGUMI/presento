@@ -744,11 +744,32 @@ function beginResizeDrag(e, id, handle) {
     if (wantsS) newH = init.h + dyLocal;
     else if (wantsN) newH = init.h - dyLocal;
 
-    if (isCorner && ev.shiftKey) {
+    const aspectLocked = isCorner && ev.shiftKey;
+    if (aspectLocked) {
       const scaleW = newW / init.w, scaleH = newH / init.h;
       const scale = Math.abs(scaleW - 1) >= Math.abs(scaleH - 1) ? scaleW : scaleH;
       newW = init.w * scale;
       newH = init.h * scale;
+    }
+
+    // 吸着は「回転していない図形」のみ対象(回転していると辺が軸に沿わないため)。
+    // アスペクト比固定中は縦横が連動しているのでスキップする。
+    let snapLineX = null, snapLineY = null;
+    if (!aspectLocked && init.rotation === 0) {
+      if (wantsE) {
+        const snap = bestSnapDelta([init.x + newW], [0, SLIDE_W, SLIDE_W / 2], SNAP_THRESHOLD);
+        if (snap) { newW += snap.diff; snapLineX = snap.target; }
+      } else if (wantsW) {
+        const snap = bestSnapDelta([init.x + init.w - newW], [0, SLIDE_W, SLIDE_W / 2], SNAP_THRESHOLD);
+        if (snap) { newW -= snap.diff; snapLineX = snap.target; }
+      }
+      if (wantsS) {
+        const snap = bestSnapDelta([init.y + newH], [0, SLIDE_H, SLIDE_H / 2], SNAP_THRESHOLD);
+        if (snap) { newH += snap.diff; snapLineY = snap.target; }
+      } else if (wantsN) {
+        const snap = bestSnapDelta([init.y + init.h - newH], [0, SLIDE_H, SLIDE_H / 2], SNAP_THRESHOLD);
+        if (snap) { newH -= snap.diff; snapLineY = snap.target; }
+      }
     }
 
     newW = Math.max(MIN_SIZE, newW);
@@ -766,11 +787,16 @@ function beginResizeDrag(e, id, handle) {
     el.w = newW;
     el.h = newH;
     repositionElementNode(el);
+    if (snapLineX != null) showSnapGuide('x', snapLineX);
+    else { const g = document.getElementById('snap-guide-x'); if (g) g.remove(); }
+    if (snapLineY != null) showSnapGuide('y', snapLineY);
+    else { const g = document.getElementById('snap-guide-y'); if (g) g.remove(); }
     renderSelectionOverlay();
   }
   function onUp() {
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('mouseup', onUp);
+    clearSnapGuides();
     commit();
   }
   document.addEventListener('mousemove', onMove);
