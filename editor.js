@@ -44,25 +44,56 @@ function buildOpacityRow(getColor, setColor, onLive, labelText) {
   return row;
 }
 
-// s.fillGradient の2色+角度を編集するコントロール一式を作る(呼び出し側で
-// s.fillGradient が既にセットされている前提)
+// 色数(2個以上、上限なし)は stops.pos を index/(n-1) で等間隔に振り直しながら管理する
+function redistributeGradientStops(stops) {
+  const n = stops.length;
+  stops.forEach((st, i) => { st.pos = n === 1 ? 0 : i / (n - 1); });
+}
+
+// s.fillGradient の色一覧+角度を編集するコントロール一式を作る(呼び出し側で
+// s.fillGradient が既にセットされている前提)。色は「+ 色を追加」でいくつでも増やせる。
 function buildGradientControls(s, onLive) {
   const wrap = document.createElement('div');
   const live = () => { renderCanvas(); if (onLive) onLive(); };
 
-  const colorRow = el('div', 'prop-row');
-  const c0 = document.createElement('input');
-  c0.type = 'color'; c0.value = colorToHex(s.fillGradient.stops[0].color);
-  c0.oninput = () => { s.fillGradient.stops[0].color = withNewRgbKeepAlpha(s.fillGradient.stops[0].color, c0.value); live(); };
-  c0.onchange = onFieldCommit;
-  colorRow.appendChild(c0);
-  colorRow.appendChild(el('span', 'prop-hint', '→'));
-  const c1 = document.createElement('input');
-  c1.type = 'color'; c1.value = colorToHex(s.fillGradient.stops[1].color);
-  c1.oninput = () => { s.fillGradient.stops[1].color = withNewRgbKeepAlpha(s.fillGradient.stops[1].color, c1.value); live(); };
-  c1.onchange = onFieldCommit;
-  colorRow.appendChild(c1);
-  wrap.appendChild(colorRow);
+  const stopsWrap = document.createElement('div');
+  wrap.appendChild(stopsWrap);
+
+  function renderStops() {
+    stopsWrap.innerHTML = '';
+    const stops = s.fillGradient.stops;
+    stops.forEach((stop, i) => {
+      const row = el('div', 'prop-row');
+      const c = document.createElement('input');
+      c.type = 'color'; c.value = colorToHex(stop.color);
+      c.oninput = () => { stop.color = withNewRgbKeepAlpha(stop.color, c.value); live(); };
+      c.onchange = onFieldCommit;
+      row.appendChild(c);
+      row.appendChild(el('span', 'prop-hint', `色${i + 1}`));
+      if (stops.length > 2) {
+        const delBtn = el('button', 'toggle-btn', '×');
+        delBtn.title = 'この色を削除';
+        delBtn.onclick = () => {
+          stops.splice(i, 1);
+          redistributeGradientStops(stops);
+          commit();
+        };
+        row.appendChild(delBtn);
+      }
+      stopsWrap.appendChild(row);
+      stopsWrap.appendChild(buildOpacityRow(() => stop.color, (c2) => { stop.color = c2; live(); }, null, `色${i + 1}の透明度`));
+    });
+  }
+  renderStops();
+
+  const addBtn = el('button', 'toggle-btn', '+ 色を追加');
+  addBtn.onclick = () => {
+    const stops = s.fillGradient.stops;
+    stops.push({ color: stops[stops.length - 1].color, pos: 1 });
+    redistributeGradientStops(stops);
+    commit();
+  };
+  wrap.appendChild(addBtn);
 
   const angleRow = el('div', 'prop-row opacity-row');
   const angleSlider = document.createElement('input');
@@ -79,9 +110,6 @@ function buildGradientControls(s, onLive) {
   angleRow.appendChild(angleSlider);
   angleRow.appendChild(angleLabel);
   wrap.appendChild(angleRow);
-
-  wrap.appendChild(buildOpacityRow(() => s.fillGradient.stops[0].color, (c) => { s.fillGradient.stops[0].color = c; live(); }, null, '色1の透明度'));
-  wrap.appendChild(buildOpacityRow(() => s.fillGradient.stops[1].color, (c) => { s.fillGradient.stops[1].color = c; live(); }, null, '色2の透明度'));
 
   return wrap;
 }
