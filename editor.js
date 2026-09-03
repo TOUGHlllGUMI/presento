@@ -1871,7 +1871,7 @@ function toggleAltTextPopover() {
 
 // ---- 図形の結合 (統合・型抜き/合成・切り出し・重色合成・型抜き) ----
 
-const MERGE_ABLE_TYPES = ['rect', 'ellipse', 'poly', 'image'];
+const MERGE_ABLE_TYPES = ['rect', 'ellipse', 'poly', 'image', 'text'];
 
 function getElRotatedBBox(el) {
   const cx = el.x + el.w / 2, cy = el.y + el.h / 2;
@@ -1906,6 +1906,21 @@ function fillShapeSilhouette(ctx, el, originX, originY, scale, compositeOp, colo
   ctx.rotate((el.rotation || 0) * Math.PI / 180);
   ctx.scale(el.flipH ? -1 : 1, el.flipV ? -1 : 1);
   const w = el.w * scale, h = el.h * scale;
+  if (el.type === 'text') {
+    // 文字は矩形の外形ではなく、実際に描画されるグリフの形をシルエットとして使う
+    ctx.translate(-w / 2, -h / 2);
+    const fontSize = el.fontSize * scale;
+    ctx.font = `${el.italic ? 'italic ' : ''}${el.bold ? '700' : '400'} ${fontSize}px ${el.fontFamily}`;
+    ctx.textBaseline = 'top';
+    ctx.textAlign = el.align === 'center' ? 'center' : el.align === 'right' ? 'right' : 'left';
+    ctx.fillStyle = color;
+    const lines = wrapText(ctx, el.text || '', w);
+    const lineHeight = fontSize * 1.3;
+    const tx = el.align === 'center' ? w / 2 : el.align === 'right' ? w : 0;
+    lines.forEach((line, i) => ctx.fillText(line, tx, i * lineHeight));
+    ctx.restore();
+    return;
+  }
   ctx.beginPath();
   if (el.type === 'rect' || el.type === 'image') {
     const r = Math.min((el.cornerRadius || 0) * scale, w / 2, h / 2);
@@ -2003,7 +2018,8 @@ function mergeStyleOverrides(sourceEl, bbox, zIndex) {
   if (sourceEl.type === 'image') {
     return { fill: '#6c4ff2', fillImage: buildFillImageFromEl(sourceEl, bbox), zIndex };
   }
-  const fillColor = (sourceEl.fill && sourceEl.fill !== 'transparent') ? sourceEl.fill : '#6c4ff2';
+  const colorSource = sourceEl.type === 'text' ? sourceEl.color : sourceEl.fill;
+  const fillColor = (colorSource && colorSource !== 'transparent') ? colorSource : '#6c4ff2';
   return { fill: fillColor, zIndex };
 }
 
@@ -2011,7 +2027,7 @@ function performShapeMerge(mode) {
   closeDropdowns();
   const slide = getActiveSlide();
   const elements = selection.map(id => findElement(slide, id)).filter(el => el && MERGE_ABLE_TYPES.includes(el.type));
-  if (elements.length < 2) { showToast('図形の結合には図形または画像を2つ以上選択してください'); return; }
+  if (elements.length < 2) { showToast('図形の結合には図形・画像・テキストを2つ以上選択してください'); return; }
 
   const bbox = computeMergedBBox(elements);
   const scale = Math.min(4, Math.max(1, 700 / Math.max(bbox.w, bbox.h)));
