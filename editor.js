@@ -1007,6 +1007,7 @@ const CM_ICONS = {
   size: '<svg viewBox="0 0 24 24"><path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4m11-5v4a1 1 0 0 1-1 1h-4"/></svg>',
   format: '<svg viewBox="0 0 24 24"><path d="M12 3c-4 4-7 7.5-7 11a7 7 0 0 0 14 0c0-3.5-3-7-7-11z"/></svg>',
   bg: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 4-4 5 5"/></svg>',
+  newslide: '<svg viewBox="0 0 24 24"><rect x="2" y="5" width="15" height="14" rx="1.5"/><path d="M18.5 10v8M14.5 14h8"/></svg>',
 };
 
 function cmItem({ icon, label, action, disabled, submenu }) {
@@ -1139,10 +1140,22 @@ function buildEmptyCanvasContextMenu() {
 
 let contextMenuPoint = { x: 0, y: 0 };
 
+function showContextMenu(items, e) {
+  const menu = document.getElementById('context-menu');
+  menu.innerHTML = '';
+  items.forEach((it) => menu.appendChild(it));
+  menu.classList.remove('hidden');
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  let left = e.clientX, top = e.clientY;
+  if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
+  if (top + mh > window.innerHeight - 8) top = window.innerHeight - mh - 8;
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+}
+
 function openContextMenu(e) {
   e.preventDefault();
   const elNode = e.target.closest('.sl-el');
-  const menu = document.getElementById('context-menu');
   contextMenuPoint = getLogicalPoint(e);
 
   let items;
@@ -1161,16 +1174,34 @@ function openContextMenu(e) {
   } else {
     items = buildEmptyCanvasContextMenu();
   }
+  showContextMenu(items, e);
+}
 
-  menu.innerHTML = '';
-  items.forEach((it) => menu.appendChild(it));
-  menu.classList.remove('hidden');
-  const mw = menu.offsetWidth, mh = menu.offsetHeight;
-  let left = e.clientX, top = e.clientY;
-  if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
-  if (top + mh > window.innerHeight - 8) top = window.innerHeight - mh - 8;
-  menu.style.left = left + 'px';
-  menu.style.top = top + 'px';
+function buildSlideContextMenu(slideId) {
+  const refresh = () => { if (sorterMode) renderSlideSorter(); };
+  const items = [];
+  items.push(cmItem({ icon: CM_ICONS.newslide, label: '新しいスライド', action: () => { selectSlide(slideId); addSlide(); refresh(); } }));
+  items.push(cmItem({ icon: CM_ICONS.duplicate, label: 'スライドを複製', action: () => { duplicateSlideById(slideId); refresh(); } }));
+  items.push(cmDivider());
+  items.push(cmItem({ icon: CM_ICONS.delete, label: 'スライドを削除', disabled: deck.slides.length <= 1, action: () => { deleteSlideById(slideId); refresh(); } }));
+  items.push(cmDivider());
+  items.push(cmItem({
+    icon: CM_ICONS.bg, label: '背景の書式設定...', action: () => {
+      selectSlide(slideId);
+      if (sorterMode) setViewMode('normal');
+      document.querySelector('.ribbon-tab[data-tab="design"]').click();
+      const group = document.querySelector('#ribbon-panels [data-panel="design"] .ribbon-group');
+      if (group) { group.classList.remove('flash-highlight'); void group.offsetWidth; group.classList.add('flash-highlight'); }
+    },
+  }));
+  return items;
+}
+
+function openSlideContextMenu(e) {
+  const item = e.target.closest('.slide-thumb') || e.target.closest('.sorter-tile');
+  if (!item) return;
+  e.preventDefault();
+  showContextMenu(buildSlideContextMenu(item.dataset.slideId), e);
 }
 
 function closeContextMenu() {
@@ -1988,6 +2019,7 @@ function initEvents() {
     const item = e.target.closest('.slide-thumb');
     if (item) selectSlide(item.dataset.slideId);
   });
+  document.getElementById('slide-list').addEventListener('contextmenu', openSlideContextMenu);
   let dragSlideId = null;
   document.getElementById('slide-list').addEventListener('dragstart', (e) => {
     const item = e.target.closest('.slide-thumb');
@@ -2154,6 +2186,7 @@ function initEvents() {
   document.getElementById('btn-sorter-view').addEventListener('click', () => setViewMode('sorter'));
 
   const sorterGrid = document.getElementById('slide-sorter-grid');
+  sorterGrid.addEventListener('contextmenu', openSlideContextMenu);
   sorterGrid.addEventListener('click', (e) => {
     if (e.target.closest('#sorter-add-btn')) { addSlide(); renderSlideSorter(); return; }
     const dupBtn = e.target.closest('[data-action="dup"]');
