@@ -19,16 +19,21 @@ function gradientEndpoints(w, h, angleDeg) {
   return { x0: cx - dx * halfLen, y0: cy - dy * halfLen, x1: cx + dx * halfLen, y1: cy + dy * halfLen };
 }
 
+// 位置スライダーで自由に並べ替えられるため、描画直前に位置順へ整列してから使う
+function sortedStops(g) {
+  return g.stops.slice().sort((a, b) => a.pos - b.pos);
+}
+
 function buildCssGradient(g) {
   const cssAngle = (g.angle + 90) % 360;
-  const stops = g.stops.map(s => `${s.color} ${Math.round(s.pos * 100)}%`).join(', ');
+  const stops = sortedStops(g).map(s => `${s.color} ${Math.round(s.pos * 100)}%`).join(', ');
   return `linear-gradient(${cssAngle}deg, ${stops})`;
 }
 
 function buildCanvasGradient(ctx, g, w, h) {
   const { x0, y0, x1, y1 } = gradientEndpoints(w, h, g.angle);
   const grad = ctx.createLinearGradient(x0, y0, x1, y1);
-  g.stops.forEach(s => grad.addColorStop(s.pos, s.color));
+  sortedStops(g).forEach(s => grad.addColorStop(s.pos, s.color));
   return grad;
 }
 
@@ -38,7 +43,7 @@ function buildSvgLinearGradient(svgNS, id, g) {
   lg.setAttribute('id', id);
   lg.setAttribute('x1', x0); lg.setAttribute('y1', y0);
   lg.setAttribute('x2', x1); lg.setAttribute('y2', y1);
-  g.stops.forEach((s) => {
+  sortedStops(g).forEach((s) => {
     const stop = document.createElementNS(svgNS, 'stop');
     stop.setAttribute('offset', `${Math.round(s.pos * 100)}%`);
     const c = parseColorRGBA(s.color);

@@ -44,14 +44,29 @@ function buildOpacityRow(getColor, setColor, onLive, labelText) {
   return row;
 }
 
-// 色数(2個以上、上限なし)は stops.pos を index/(n-1) で等間隔に振り直しながら管理する
-function redistributeGradientStops(stops) {
-  const n = stops.length;
-  stops.forEach((st, i) => { st.pos = n === 1 ? 0 : i / (n - 1); });
+// 新しい色を「一番広い隙間」の中央に、両隣の色を混ぜた色で挿入する。
+// 既存の色の位置は変えない(手で調整した配置を壊さないため)。
+function insertGradientStop(stops) {
+  if (stops.length < 2) {
+    stops.push({ color: stops[0] ? stops[0].color : '#ffffff', pos: 1 });
+    return;
+  }
+  const sorted = stops.slice().sort((a, b) => a.pos - b.pos);
+  let bestGap = -1, bestA = sorted[0], bestB = sorted[1];
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const gap = sorted[i + 1].pos - sorted[i].pos;
+    if (gap > bestGap) { bestGap = gap; bestA = sorted[i]; bestB = sorted[i + 1]; }
+  }
+  const ca = parseColorRGBA(bestA.color), cb = parseColorRGBA(bestB.color);
+  const blended = toColorString(
+    ca.r + (cb.r - ca.r) / 2, ca.g + (cb.g - ca.g) / 2, ca.b + (cb.b - ca.b) / 2, ca.a + (cb.a - ca.a) / 2,
+  );
+  stops.push({ color: blended, pos: (bestA.pos + bestB.pos) / 2 });
 }
 
 // s.fillGradient の色一覧+角度を編集するコントロール一式を作る(呼び出し側で
-// s.fillGradient が既にセットされている前提)。色は「+ 色を追加」でいくつでも増やせる。
+// s.fillGradient が既にセットされている前提)。色は「+ 色を追加」でいくつでも増やせ、
+// 各色の位置(0〜100%)も個別にスライダーで調整できる。
 function buildGradientControls(s, onLive) {
   const wrap = document.createElement('div');
   const live = () => { renderCanvas(); if (onLive) onLive(); };
@@ -75,12 +90,28 @@ function buildGradientControls(s, onLive) {
         delBtn.title = 'この色を削除';
         delBtn.onclick = () => {
           stops.splice(i, 1);
-          redistributeGradientStops(stops);
           commit();
         };
         row.appendChild(delBtn);
       }
       stopsWrap.appendChild(row);
+
+      const posRow = el('div', 'prop-row opacity-row');
+      const posSlider = document.createElement('input');
+      posSlider.type = 'range'; posSlider.min = '0'; posSlider.max = '100'; posSlider.className = 'opacity-slider';
+      posSlider.value = String(Math.round(stop.pos * 100));
+      const posLabel = el('span', 'prop-hint opacity-value', `${Math.round(stop.pos * 100)}%`);
+      posSlider.addEventListener('input', () => {
+        stop.pos = Number(posSlider.value) / 100;
+        posLabel.textContent = `${posSlider.value}%`;
+        live();
+      });
+      posSlider.addEventListener('change', () => commit());
+      posRow.appendChild(el('span', 'prop-hint', '位置'));
+      posRow.appendChild(posSlider);
+      posRow.appendChild(posLabel);
+      stopsWrap.appendChild(posRow);
+
       stopsWrap.appendChild(buildOpacityRow(() => stop.color, (c2) => { stop.color = c2; live(); }, null, `色${i + 1}の透明度`));
     });
   }
@@ -88,9 +119,7 @@ function buildGradientControls(s, onLive) {
 
   const addBtn = el('button', 'toggle-btn', '+ 色を追加');
   addBtn.onclick = () => {
-    const stops = s.fillGradient.stops;
-    stops.push({ color: stops[stops.length - 1].color, pos: 1 });
-    redistributeGradientStops(stops);
+    insertGradientStop(s.fillGradient.stops);
     commit();
   };
   wrap.appendChild(addBtn);
