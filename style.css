@@ -225,6 +225,10 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   position: absolute; border: 1.5px dashed var(--accent); background: rgba(108, 79, 242, 0.12); pointer-events: none;
 }
 
+.snap-guide { position: absolute; background: #ff3d84; pointer-events: none; z-index: 40; }
+.snap-guide-x { top: 0; bottom: 0; width: 1px; }
+.snap-guide-y { left: 0; right: 0; height: 1px; }
+
 #zoom-bar {
   position: absolute; right: 14px; bottom: 14px; background: #fff; border: 1px solid var(--border);
   border-radius: 20px; display: flex; align-items: center; gap: 4px; padding: 4px 8px; box-shadow: 0 4px 14px rgba(40,20,90,0.12);

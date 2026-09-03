@@ -623,6 +623,51 @@ function getLogicalPoint(e) {
 
 // ---- ドラッグ: 移動 / リサイズ / 回転 / マーキー選択 ----
 
+const SNAP_THRESHOLD = 6; // 論理px。この範囲内ならスライドの端・中央に吸着する
+
+// 「動かした後の候補座標(edges)」のどれかが「スライド側の吸着ライン(targets)」の
+// どれかにこの範囲内で近づいたら、一番近いものへスナップするズレ量を返す
+function bestSnapDelta(edges, targets, threshold) {
+  let best = null;
+  edges.forEach((edge) => {
+    targets.forEach((target) => {
+      const diff = target - edge;
+      if (Math.abs(diff) <= threshold && (!best || Math.abs(diff) < Math.abs(best.diff))) {
+        best = { diff, target };
+      }
+    });
+  });
+  return best;
+}
+
+function computeMoveSnap(left, right, top, bottom) {
+  const cx = (left + right) / 2, cy = (top + bottom) / 2;
+  const bestX = bestSnapDelta([left, right, cx], [0, SLIDE_W, SLIDE_W / 2], SNAP_THRESHOLD);
+  const bestY = bestSnapDelta([top, bottom, cy], [0, SLIDE_H, SLIDE_H / 2], SNAP_THRESHOLD);
+  return {
+    dx: bestX ? bestX.diff : 0,
+    dy: bestY ? bestY.diff : 0,
+    lineX: bestX ? bestX.target : null,
+    lineY: bestY ? bestY.target : null,
+  };
+}
+
+function showSnapGuide(axis, pos) {
+  let line = document.getElementById('snap-guide-' + axis);
+  if (!line) {
+    line = document.createElement('div');
+    line.id = 'snap-guide-' + axis;
+    line.className = 'snap-guide snap-guide-' + axis;
+    document.getElementById('slide-canvas').appendChild(line);
+  }
+  if (axis === 'x') line.style.left = pos + 'px';
+  else line.style.top = pos + 'px';
+}
+
+function clearSnapGuides() {
+  document.querySelectorAll('#slide-canvas .snap-guide').forEach(n => n.remove());
+}
+
 function beginMoveDrag(e, clickedId) {
   e.preventDefault();
   const slide = getActiveSlide();
@@ -632,13 +677,28 @@ function beginMoveDrag(e, clickedId) {
     renderPropPanel();
   }
   const start = getLogicalPoint(e);
-  const initials = selection.map(id => { const el = findElement(slide, id); return { id, x: el.x, y: el.y }; });
+  const initials = selection.map(id => { const el = findElement(slide, id); return { id, x: el.x, y: el.y, w: el.w, h: el.h }; });
+  let bbMinX = Infinity, bbMinY = Infinity, bbMaxX = -Infinity, bbMaxY = -Infinity;
+  initials.forEach((init) => {
+    bbMinX = Math.min(bbMinX, init.x);
+    bbMinY = Math.min(bbMinY, init.y);
+    bbMaxX = Math.max(bbMaxX, init.x + init.w);
+    bbMaxY = Math.max(bbMaxY, init.y + init.h);
+  });
   let moved = false;
 
   function onMove(ev) {
     const p = getLogicalPoint(ev);
-    const dx = p.x - start.x, dy = p.y - start.y;
+    let dx = p.x - start.x, dy = p.y - start.y;
     if (Math.abs(dx) > 1 || Math.abs(dy) > 1) moved = true;
+
+    const snap = computeMoveSnap(bbMinX + dx, bbMaxX + dx, bbMinY + dy, bbMaxY + dy);
+    dx += snap.dx; dy += snap.dy;
+    if (snap.lineX != null) showSnapGuide('x', snap.lineX);
+    else { const g = document.getElementById('snap-guide-x'); if (g) g.remove(); }
+    if (snap.lineY != null) showSnapGuide('y', snap.lineY);
+    else { const g = document.getElementById('snap-guide-y'); if (g) g.remove(); }
+
     initials.forEach(init => {
       const el = findElement(slide, init.id);
       if (!el) return;
@@ -650,6 +710,7 @@ function beginMoveDrag(e, clickedId) {
   function onUp() {
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('mouseup', onUp);
+    clearSnapGuides();
     if (moved) commit();
   }
   document.addEventListener('mousemove', onMove);
