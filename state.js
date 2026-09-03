@@ -12,6 +12,42 @@ function uid() {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 }
 
+// ---- 色(不透明度つき)のユーティリティ ----
+// 色は '#rrggbb'(不透明) または 'rgba(r,g,b,a)'(半透明) の CSS 文字列として保持する。
+// DOM の style / SVG 属性 / Canvas2D の fillStyle はいずれもこの2形式をそのまま解釈できるため、
+// 描画側のコードは変更不要。
+
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+  if (!m) return { r: 0, g: 0, b: 0 };
+  return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
+}
+
+function parseColorRGBA(color) {
+  if (!color || color === 'transparent') return { r: 255, g: 255, b: 255, a: 0 };
+  const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+))?\s*\)$/i.exec(color);
+  if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+  const { r, g, b } = hexToRgb(color);
+  return { r, g, b, a: 1 };
+}
+
+function toColorString(r, g, b, a) {
+  const hex = '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+  const clampedA = Math.round(Math.max(0, Math.min(1, a)) * 100) / 100;
+  return clampedA >= 1 ? hex : `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${clampedA})`;
+}
+
+function colorToHex(color) {
+  const { r, g, b } = parseColorRGBA(color);
+  return '#' + [r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+}
+
+function withNewRgbKeepAlpha(existingColor, hex) {
+  const { a } = parseColorRGBA(existingColor);
+  const { r, g, b } = hexToRgb(hex);
+  return toColorString(r, g, b, a);
+}
+
 function createDefaultTextEl(overrides) {
   return Object.assign({
     id: uid(),

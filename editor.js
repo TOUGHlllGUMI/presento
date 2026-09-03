@@ -17,42 +17,6 @@ let sorterMode = false;
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 const MIN_SIZE = 20;
 
-// ---- 色(不透明度つき)のユーティリティ ----
-// 色は '#rrggbb'(不透明) または 'rgba(r,g,b,a)'(半透明) の CSS 文字列として保持する。
-// DOM の style / SVG 属性 / Canvas2D の fillStyle はいずれもこの2形式をそのまま解釈できるため、
-// 描画側のコードは変更不要。
-
-function hexToRgb(hex) {
-  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
-  if (!m) return { r: 0, g: 0, b: 0 };
-  return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
-}
-
-function parseColorRGBA(color) {
-  if (!color || color === 'transparent') return { r: 255, g: 255, b: 255, a: 0 };
-  const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+))?\s*\)$/i.exec(color);
-  if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
-  const { r, g, b } = hexToRgb(color);
-  return { r, g, b, a: 1 };
-}
-
-function toColorString(r, g, b, a) {
-  const hex = '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
-  const clampedA = Math.round(Math.max(0, Math.min(1, a)) * 100) / 100;
-  return clampedA >= 1 ? hex : `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${clampedA})`;
-}
-
-function colorToHex(color) {
-  const { r, g, b } = parseColorRGBA(color);
-  return '#' + [r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
-}
-
-function withNewRgbKeepAlpha(existingColor, hex) {
-  const { a } = parseColorRGBA(existingColor);
-  const { r, g, b } = hexToRgb(hex);
-  return toColorString(r, g, b, a);
-}
-
 // 色の getter/setter に紐づく「透明度」スライダー行を1つ作る
 function buildOpacityRow(getColor, setColor, onLive, labelText) {
   const row = el('div', 'prop-row opacity-row');
@@ -77,6 +41,69 @@ function buildOpacityRow(getColor, setColor, onLive, labelText) {
   row.appendChild(slider);
   row.appendChild(label);
   row._sync = sync;
+  return row;
+}
+
+// s.fillGradient の2色+角度を編集するコントロール一式を作る(呼び出し側で
+// s.fillGradient が既にセットされている前提)
+function buildGradientControls(s, onLive) {
+  const wrap = document.createElement('div');
+  const live = () => { renderCanvas(); if (onLive) onLive(); };
+
+  const colorRow = el('div', 'prop-row');
+  const c0 = document.createElement('input');
+  c0.type = 'color'; c0.value = colorToHex(s.fillGradient.stops[0].color);
+  c0.oninput = () => { s.fillGradient.stops[0].color = withNewRgbKeepAlpha(s.fillGradient.stops[0].color, c0.value); live(); };
+  c0.onchange = onFieldCommit;
+  colorRow.appendChild(c0);
+  colorRow.appendChild(el('span', 'prop-hint', '→'));
+  const c1 = document.createElement('input');
+  c1.type = 'color'; c1.value = colorToHex(s.fillGradient.stops[1].color);
+  c1.oninput = () => { s.fillGradient.stops[1].color = withNewRgbKeepAlpha(s.fillGradient.stops[1].color, c1.value); live(); };
+  c1.onchange = onFieldCommit;
+  colorRow.appendChild(c1);
+  wrap.appendChild(colorRow);
+
+  const angleRow = el('div', 'prop-row opacity-row');
+  const angleSlider = document.createElement('input');
+  angleSlider.type = 'range'; angleSlider.min = '0'; angleSlider.max = '359'; angleSlider.className = 'opacity-slider';
+  angleSlider.value = String(s.fillGradient.angle);
+  const angleLabel = el('span', 'prop-hint opacity-value', `${s.fillGradient.angle}°`);
+  angleSlider.addEventListener('input', () => {
+    s.fillGradient.angle = Number(angleSlider.value);
+    angleLabel.textContent = `${angleSlider.value}°`;
+    live();
+  });
+  angleSlider.addEventListener('change', () => commit());
+  angleRow.appendChild(el('span', 'prop-hint', '角度'));
+  angleRow.appendChild(angleSlider);
+  angleRow.appendChild(angleLabel);
+  wrap.appendChild(angleRow);
+
+  wrap.appendChild(buildOpacityRow(() => s.fillGradient.stops[0].color, (c) => { s.fillGradient.stops[0].color = c; live(); }, null, '色1の透明度'));
+  wrap.appendChild(buildOpacityRow(() => s.fillGradient.stops[1].color, (c) => { s.fillGradient.stops[1].color = c; live(); }, null, '色2の透明度'));
+
+  return wrap;
+}
+
+// 「単色 / グラデーション」切り替えボタン行。s.fillGradient の有無を切り替える
+function buildFillModeToggle(s) {
+  const row = el('div', 'prop-row');
+  const solidBtn = el('button', 'toggle-btn' + (!s.fillGradient ? ' active' : ''), '単色');
+  const gradBtn = el('button', 'toggle-btn' + (s.fillGradient ? ' active' : ''), 'グラデーション');
+  solidBtn.onclick = () => {
+    if (!s.fillGradient) return;
+    delete s.fillGradient;
+    commit(); renderPropPanel();
+  };
+  gradBtn.onclick = () => {
+    if (s.fillGradient) return;
+    const base = (s.fill && s.fill !== 'transparent') ? s.fill : '#6c4ff2';
+    s.fillGradient = { angle: 90, stops: [{ color: base, pos: 0 }, { color: '#ffffff', pos: 1 }] };
+    commit(); renderPropPanel();
+  };
+  row.appendChild(solidBtn);
+  row.appendChild(gradBtn);
   return row;
 }
 
@@ -867,37 +894,56 @@ function updateTextLive(t) {
 function buildMergeSection(s) {
   const sec = el('div', 'prop-section');
   sec.appendChild(el('div', 'prop-label', '塗りつぶし'));
-  const row = el('div', 'prop-row');
-  const fill = document.createElement('input');
-  fill.type = 'color'; fill.value = colorToHex(s.fill);
-  fill.oninput = () => { s.fill = withNewRgbKeepAlpha(s.fill, fill.value); quickRestyle(s); };
-  fill.onchange = onFieldCommit;
-  row.appendChild(fill);
-  row.appendChild(el('span', 'prop-hint', '図形の結合で作成された図形です'));
-  sec.appendChild(row);
-  sec.appendChild(buildOpacityRow(() => s.fill, (c) => { s.fill = c; quickRestyle(s); }));
+  sec.appendChild(el('div', 'prop-hint', '図形の結合で作成された図形です'));
+
+  if (s.fillImage) {
+    sec.appendChild(el('div', 'prop-hint', '(画像で塗りつぶされています)'));
+    return sec;
+  }
+
+  sec.appendChild(buildFillModeToggle(s));
+  if (s.fillGradient) {
+    sec.appendChild(buildGradientControls(s));
+  } else {
+    const row = el('div', 'prop-row');
+    const fill = document.createElement('input');
+    fill.type = 'color'; fill.value = colorToHex(s.fill);
+    fill.oninput = () => { s.fill = withNewRgbKeepAlpha(s.fill, fill.value); quickRestyle(s); };
+    fill.onchange = onFieldCommit;
+    row.appendChild(fill);
+    sec.appendChild(row);
+    sec.appendChild(buildOpacityRow(() => s.fill, (c) => { s.fill = c; quickRestyle(s); }));
+  }
   return sec;
 }
 
 function buildShapeSection(s) {
   const sec = el('div', 'prop-section');
   sec.appendChild(el('div', 'prop-label', '塗りつぶしと枠線'));
-  const row = el('div', 'prop-row');
-  const fill = document.createElement('input');
-  fill.type = 'color'; fill.value = colorToHex(s.fill);
-  fill.oninput = () => { s.fill = withNewRgbKeepAlpha(s.fill, fill.value); quickRestyle(s); };
-  fill.onchange = onFieldCommit;
-  row.appendChild(fill);
-  row.appendChild(el('span', 'prop-hint', '塗り'));
 
+  sec.appendChild(buildFillModeToggle(s));
+  if (s.fillGradient) {
+    sec.appendChild(buildGradientControls(s));
+  } else {
+    const row = el('div', 'prop-row');
+    const fill = document.createElement('input');
+    fill.type = 'color'; fill.value = colorToHex(s.fill);
+    fill.oninput = () => { s.fill = withNewRgbKeepAlpha(s.fill, fill.value); quickRestyle(s); };
+    fill.onchange = onFieldCommit;
+    row.appendChild(fill);
+    row.appendChild(el('span', 'prop-hint', '塗り'));
+    sec.appendChild(row);
+    sec.appendChild(buildOpacityRow(() => s.fill, (c) => { s.fill = c; quickRestyle(s); }, null, '塗りの透明度'));
+  }
+
+  const strokeRow = el('div', 'prop-row');
   const stroke = document.createElement('input');
   stroke.type = 'color'; stroke.value = colorToHex(s.stroke);
   stroke.oninput = () => { s.stroke = withNewRgbKeepAlpha(s.stroke, stroke.value); quickRestyle(s); };
   stroke.onchange = onFieldCommit;
-  row.appendChild(stroke);
-  row.appendChild(el('span', 'prop-hint', '枠線'));
-  sec.appendChild(row);
-  sec.appendChild(buildOpacityRow(() => s.fill, (c) => { s.fill = c; quickRestyle(s); }, null, '塗りの透明度'));
+  strokeRow.appendChild(stroke);
+  strokeRow.appendChild(el('span', 'prop-hint', '枠線'));
+  sec.appendChild(strokeRow);
   sec.appendChild(buildOpacityRow(() => s.stroke, (c) => { s.stroke = c; quickRestyle(s); }, null, '枠線の透明度'));
 
   const row2 = el('div', 'prop-row');
@@ -928,10 +974,14 @@ function quickRestyle(s) {
   const node = document.querySelector(`#slide-canvas .sl-el[data-id="${s.id}"]`);
   if (!node) return;
   if (s.type === 'rect' || s.type === 'ellipse') {
-    node.style.background = s.fill;
+    node.style.background = s.fillGradient ? buildCssGradient(s.fillGradient) : s.fill;
     node.style.border = s.strokeWidth > 0 ? `${s.strokeWidth}px solid ${s.stroke}` : 'none';
     if (s.type === 'rect') node.style.borderRadius = (s.cornerRadius || 0) + 'px';
   } else if (s.type === 'poly') {
+    if (s.fillGradient) {
+      renderCanvas();
+      return;
+    }
     const poly = node.querySelector('polygon');
     if (poly) {
       poly.setAttribute('fill', s.fill && s.fill !== 'transparent' ? s.fill : 'none');
@@ -948,7 +998,7 @@ function quickRestyle(s) {
     const inner = node.querySelector('.sl-text-inner');
     if (inner) inner.style.background = s.fill && s.fill !== 'transparent' ? s.fill : 'transparent';
   } else if (s.type === 'merge') {
-    node.style.background = s.fill;
+    node.style.background = s.fillImage ? '' : (s.fillGradient ? buildCssGradient(s.fillGradient) : s.fill);
   }
 }
 
@@ -1685,10 +1735,12 @@ function initFmtStyleMenus() {
   buildColorPalette(document.getElementById('menu-fmt-fill'), (c) => {
     const el = fillEl();
     if (!el) return;
+    delete el.fillGradient;
     el.fill = c; quickRestyle(el); commit();
   }, [mkTextMenuButton('塗りつぶしなし', () => {
     const el = fillEl();
     if (!el) return;
+    delete el.fillGradient;
     el.fill = 'transparent'; quickRestyle(el); commit();
   })], { getEl: fillEl, field: 'fill', onLive: (e) => { quickRestyle(e); } });
 

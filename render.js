@@ -7,6 +7,48 @@ function elStyleCommon(el) {
     + `transform:rotate(${el.rotation || 0}deg) scale(${flipX},${flipY});z-index:${el.zIndex};`;
 }
 
+// ---- グラデーション塗りつぶしのユーティリティ ----
+// angle は自前の規約: 0=右向き, 90=下向き(時計回り)。CSS の linear-gradient() は
+// 0=上向き基準・時計回りなので、CSS へ渡すときだけ +90 して変換する。
+
+function gradientEndpoints(w, h, angleDeg) {
+  const rad = angleDeg * Math.PI / 180;
+  const dx = Math.cos(rad), dy = Math.sin(rad);
+  const halfLen = Math.abs(dx) * w / 2 + Math.abs(dy) * h / 2;
+  const cx = w / 2, cy = h / 2;
+  return { x0: cx - dx * halfLen, y0: cy - dy * halfLen, x1: cx + dx * halfLen, y1: cy + dy * halfLen };
+}
+
+function buildCssGradient(g) {
+  const cssAngle = (g.angle + 90) % 360;
+  const stops = g.stops.map(s => `${s.color} ${Math.round(s.pos * 100)}%`).join(', ');
+  return `linear-gradient(${cssAngle}deg, ${stops})`;
+}
+
+function buildCanvasGradient(ctx, g, w, h) {
+  const { x0, y0, x1, y1 } = gradientEndpoints(w, h, g.angle);
+  const grad = ctx.createLinearGradient(x0, y0, x1, y1);
+  g.stops.forEach(s => grad.addColorStop(s.pos, s.color));
+  return grad;
+}
+
+function buildSvgLinearGradient(svgNS, id, g) {
+  const { x0, y0, x1, y1 } = gradientEndpoints(1, 1, g.angle);
+  const lg = document.createElementNS(svgNS, 'linearGradient');
+  lg.setAttribute('id', id);
+  lg.setAttribute('x1', x0); lg.setAttribute('y1', y0);
+  lg.setAttribute('x2', x1); lg.setAttribute('y2', y1);
+  g.stops.forEach((s) => {
+    const stop = document.createElementNS(svgNS, 'stop');
+    stop.setAttribute('offset', `${Math.round(s.pos * 100)}%`);
+    const c = parseColorRGBA(s.color);
+    stop.setAttribute('stop-color', `rgb(${c.r},${c.g},${c.b})`);
+    stop.setAttribute('stop-opacity', String(c.a));
+    lg.appendChild(stop);
+  });
+  return lg;
+}
+
 function buildElementNode(el, editable) {
   const node = document.createElement('div');
   node.className = 'sl-el sl-el-' + el.type;
@@ -28,11 +70,11 @@ function buildElementNode(el, editable) {
     inner.textContent = el.text;
     node.appendChild(inner);
   } else if (el.type === 'rect') {
-    node.style.background = el.fill;
+    node.style.background = el.fillGradient ? buildCssGradient(el.fillGradient) : el.fill;
     node.style.border = el.strokeWidth > 0 ? `${el.strokeWidth}px solid ${el.stroke}` : 'none';
     node.style.borderRadius = (el.cornerRadius || 0) + 'px';
   } else if (el.type === 'ellipse') {
-    node.style.background = el.fill;
+    node.style.background = el.fillGradient ? buildCssGradient(el.fillGradient) : el.fill;
     node.style.border = el.strokeWidth > 0 ? `${el.strokeWidth}px solid ${el.stroke}` : 'none';
     node.style.borderRadius = '50%';
   } else if (el.type === 'line' || el.type === 'arrow' || el.type === 'double-arrow') {
@@ -83,7 +125,15 @@ function buildElementNode(el, editable) {
     const pts = polyPoints(el.shapeKind).map(([x, y]) => `${x * el.w},${y * el.h}`).join(' ');
     const poly = document.createElementNS(svgNS, 'polygon');
     poly.setAttribute('points', pts);
-    poly.setAttribute('fill', el.fill && el.fill !== 'transparent' ? el.fill : 'none');
+    if (el.fillGradient) {
+      const gradId = 'grad-' + el.id;
+      const defs = document.createElementNS(svgNS, 'defs');
+      defs.appendChild(buildSvgLinearGradient(svgNS, gradId, el.fillGradient));
+      svg.appendChild(defs);
+      poly.setAttribute('fill', `url(#${gradId})`);
+    } else {
+      poly.setAttribute('fill', el.fill && el.fill !== 'transparent' ? el.fill : 'none');
+    }
     poly.setAttribute('stroke', el.strokeWidth > 0 ? el.stroke : 'none');
     poly.setAttribute('stroke-width', el.strokeWidth || 0);
     poly.setAttribute('stroke-linejoin', 'round');
@@ -130,7 +180,7 @@ function buildElementNode(el, editable) {
         + `transform:rotate(${fi.rotation || 0}deg) scale(${flipX},${flipY});object-fit:fill;pointer-events:none;`;
       node.appendChild(img);
     } else {
-      node.style.background = el.fill;
+      node.style.background = el.fillGradient ? buildCssGradient(el.fillGradient) : el.fill;
     }
   }
   if (el.shadow) node.style.filter = 'drop-shadow(2px 4px 6px rgba(0,0,0,0.4))';
@@ -235,7 +285,10 @@ function drawElementToCanvas(ctx, el, scale) {
     } else {
       ctx.ellipse(w / 2, h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
     }
-    if (el.fill && el.fill !== 'transparent') { ctx.fillStyle = el.fill; ctx.fill(); }
+    if (el.fillGradient || (el.fill && el.fill !== 'transparent')) {
+      ctx.fillStyle = el.fillGradient ? buildCanvasGradient(ctx, el.fillGradient, w, h) : el.fill;
+      ctx.fill();
+    }
     if (el.strokeWidth > 0) { ctx.strokeStyle = el.stroke; ctx.lineWidth = el.strokeWidth * scale; ctx.stroke(); }
   } else if (el.type === 'merge') {
     if (el._maskImg) {
@@ -249,7 +302,7 @@ function drawElementToCanvas(ctx, el, scale) {
         ctx.drawImage(el._fillImg, -fi.w * scale / 2, -fi.h * scale / 2, fi.w * scale, fi.h * scale);
         ctx.restore();
       } else {
-        ctx.fillStyle = el.fill;
+        ctx.fillStyle = el.fillGradient ? buildCanvasGradient(ctx, el.fillGradient, w, h) : el.fill;
         ctx.fillRect(0, 0, w, h);
       }
       ctx.globalCompositeOperation = 'destination-in';
@@ -261,7 +314,10 @@ function drawElementToCanvas(ctx, el, scale) {
     ctx.beginPath();
     pts.forEach(([x, y], i) => { if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
     ctx.closePath();
-    if (el.fill && el.fill !== 'transparent') { ctx.fillStyle = el.fill; ctx.fill(); }
+    if (el.fillGradient || (el.fill && el.fill !== 'transparent')) {
+      ctx.fillStyle = el.fillGradient ? buildCanvasGradient(ctx, el.fillGradient, w, h) : el.fill;
+      ctx.fill();
+    }
     if (el.strokeWidth > 0) { ctx.strokeStyle = el.stroke; ctx.lineWidth = el.strokeWidth * scale; ctx.lineJoin = 'round'; ctx.stroke(); }
   } else if (el.type === 'draw') {
     ctx.globalAlpha = el.opacity != null ? el.opacity : 1;
