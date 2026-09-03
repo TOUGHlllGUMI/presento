@@ -267,8 +267,9 @@ select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; 
   z-index: 200; flex-direction: column;
 }
 #present-overlay.hidden { display: none; }
+#present-stage { transform-origin: center center; flex-shrink: 0; }
 #present-slide {
-  width: min(92vw, 92vh * 16 / 9); aspect-ratio: 16/9; background: #fff; position: relative; box-shadow: 0 10px 60px rgba(0,0,0,0.5);
+  width: 960px; height: 540px; background: #fff; position: relative; box-shadow: 0 10px 60px rgba(0,0,0,0.5);
 }
 #present-slide .sl-el { pointer-events: none; }
 #present-controls {

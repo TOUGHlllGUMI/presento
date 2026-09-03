@@ -3,14 +3,25 @@
 const Present = (() => {
   let deck = null;
   let index = 0;
-  let overlay, slideEl, counterEl;
+  let overlay, stageEl, slideEl, counterEl;
   let recording = false;
   let slideEnterTime = 0;
   let slideDurations = [];
   let presentStartTime = 0;
 
+  // #present-slide は編集画面の #slide-canvas と同じく常に 960x540px 固定で組み立て、
+  // 実際の画面いっぱいに見せるための拡大率は #present-stage 側の transform:scale で掛ける
+  // (要素の left/top は SLIDE_W x SLIDE_H を基準にした絶対px なので、スライド自体を
+  // ビューポート幅に合わせて可変サイズにすると座標が合わなくなる)
+  function updateStageScale() {
+    if (!stageEl) return;
+    const scale = Math.min((window.innerWidth * 0.92) / SLIDE_W, (window.innerHeight * 0.92) / SLIDE_H);
+    stageEl.style.transform = `scale(${scale})`;
+  }
+
   function init() {
     overlay = document.getElementById('present-overlay');
+    stageEl = document.getElementById('present-stage');
     slideEl = document.getElementById('present-slide');
     counterEl = document.getElementById('present-counter');
     document.getElementById('present-prev').addEventListener('click', prev);
@@ -19,6 +30,8 @@ const Present = (() => {
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay || e.target === slideEl) next();
     });
+    window.addEventListener('resize', updateStageScale);
+    document.addEventListener('fullscreenchange', updateStageScale);
   }
 
   function render(transitionType) {
@@ -51,9 +64,10 @@ const Present = (() => {
     presentStartTime = Date.now();
     slideEnterTime = presentStartTime;
     slideDurations = [];
+    updateStageScale();
     render();
     const el = overlay;
-    if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+    if (el.requestFullscreen) el.requestFullscreen().then(updateStageScale).catch(() => {});
     document.addEventListener('keydown', onKey);
   }
 
